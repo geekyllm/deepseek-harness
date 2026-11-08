@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopPaths } from '../src/paths.ts'
-import { DesktopProjectManager } from '../src/project-manager.ts'
+import { createPluginProfile, DesktopProjectManager } from '../src/project-manager.ts'
+import { DESKTOP_BUNDLED_PLUGIN_NAMES, desktopBundledPluginDependencies } from '../src/bundled-plugins.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -40,6 +41,58 @@ function setup(): { root: string; manager: DesktopProjectManager } {
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe('desktop bundled plugin selection', () => {
+  it('uses host profile packages by default and embeds them only on explicit request', () => {
+    expect(desktopBundledPluginDependencies({})).toEqual({})
+    expect(desktopBundledPluginDependencies({ DSH_DESKTOP_EMBED_PLUGINS: '1' })).toMatchObject({
+      dshmarket: '1.73.12', 'dsh-video-skin': '0.1.6',
+    })
+  })
+})
+
+describe('desktop bundled plugin profile', () => {
+  it('enables bundled plugins once in a fresh or pre-bundled profile', () => {
+    const root = temporaryRoot()
+    const profile = join(root, 'profile')
+    const bundles = DESKTOP_BUNDLED_PLUGIN_NAMES.slice(0, 2)
+    createPluginProfile(profile, { bundledPlugins: bundles })
+    const manifestPath = join(profile, 'package.json')
+    const fresh = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(fresh.dsh.profile.bundles).toEqual(expect.arrayContaining(bundles))
+    expect(existsSync(join(profile, '.desktop-bundled-plugins-v1'))).toBe(true)
+    fresh.dsh.profile.bundles.splice(fresh.dsh.profile.bundles.indexOf(bundles[0]!), 1)
+    writeFileSync(manifestPath, JSON.stringify(fresh))
+    createPluginProfile(profile, { bundledPlugins: bundles })
+    const retained = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
+    expect(retained.dsh.profile.bundles).not.toContain(bundles[0])
+  })
+
+  it('drops stale embedded bundles when a later runtime relies on host profile packages', () => {
+    const root = temporaryRoot()
+    const profile = join(root, 'profile')
+    createPluginProfile(profile, { bundledPlugins: DESKTOP_BUNDLED_PLUGIN_NAMES })
+    createPluginProfile(profile)
+    const bundles = (JSON.parse(readFileSync(join(profile, 'package.json'), 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }).dsh.profile.bundles
+    expect(bundles).toEqual(expect.not.arrayContaining([...DESKTOP_BUNDLED_PLUGIN_NAMES]))
+    expect(existsSync(join(profile, '.desktop-bundled-plugins-v1'))).toBe(false)
+  })
+
+  it('migrates an existing profile once when the runtime starts carrying bundled plugins', () => {
+    const root = temporaryRoot()
+    const profile = join(root, 'profile')
+    createPluginProfile(profile)
+    expect(existsSync(join(profile, '.desktop-bundled-plugins-v1'))).toBe(false)
+    createPluginProfile(profile, { bundledPlugins: DESKTOP_BUNDLED_PLUGIN_NAMES })
+    const bundles = (JSON.parse(readFileSync(join(profile, 'package.json'), 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }).dsh.profile.bundles
+    expect(bundles).toEqual(expect.arrayContaining([...DESKTOP_BUNDLED_PLUGIN_NAMES]))
+    expect(existsSync(join(profile, '.desktop-bundled-plugins-v1'))).toBe(true)
+  })
 })
 
 describe('desktop external plugin profile', () => {

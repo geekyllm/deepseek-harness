@@ -19,6 +19,7 @@ Build Desktop installers locally or through Windows or macOS Actions, choose dep
 - [macOS self-hosted packaging](#macos-actions)
 - [Unsigned Windows test installer](#unsigned-windows-test-installer)
 - [Local macOS DMG without release signing](#local-macos-dmg-without-release-signing)
+- [Local Linux x64 AppImage without release signing](#local-linux-x64-appimage-without-release-signing)
 - [macOS release signing and diagnostics](#macos-release-signing)
 - [Directory builds and preparation](#directory-and-preparation)
 - [Local Official bundles from a loopback registry](#local-official-bundles-from-a-loopback-registry)
@@ -97,7 +98,7 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
+The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux x64 supports local unsigned AppImage builds; Linux is not yet a release or update target.
 
 Both release and local unsigned macOS DMGs use LZMA compression (`dmg.format: 'ULMO'`) in [the electron-builder configuration](../scripts/electron-builder-config.mjs). A [build-time patch](../../../patches/app-builder-lib@26.17.0.patch) adds this format to the pinned builder's validation and TypeScript declarations.
 
@@ -177,6 +178,22 @@ pnpm run package:desktop:mac:x64:unsigned
 Add `--check` to validate local configuration and tools without building, or `--dir` to stop at the unpacked application. The DMG is `apps/desktop/.desktop-build/targets/<target>/unsigned-artifacts/deepseek-harness-<version>-mac-<arch>-unsigned.dmg`. After all checks pass, the command prints `DMG:` followed by its absolute path. Open it and copy the application to a local test directory.
 
 These commands ignore `.env.macos` and inherited release settings, use `com.deepseek.harness` as the app ID, and omit automatic-update and mandatory-update configuration. Build tools, standard network proxies, and `DSH_DESKTOP_NPM_REGISTRY` remain available from the shell. They skip Developer ID signing, Apple notarization, temporary signing keychains, and notarization proxy changes. Electron receives a local ad-hoc signature without certificates so the modified executable can run; the DMG is unsigned. Both preparation and the assembled application still run runtime integrity and smoke checks. Local builds omit update feeds, ZIPs, and release completion records, and the upload commands cannot publish them. macOS may require approval in System Settings → Privacy & Security to open an unnotarized application. These builds stage no Computer Use helper, so Computer Use reports the missing helper when it prepares.
+
+<a id="local-linux-x64-appimage-without-release-signing"></a>
+
+## Local Linux x64 AppImage without release signing
+
+After `pnpm install`, run this command from the repository root on a Linux x64 host:
+
+```sh
+pnpm run package:desktop:linux:x64:unsigned
+```
+
+Add `--check` to validate the host and tooling without building. The AppImage is written under `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/`; the command prints its absolute path after the runtime smoke checks pass. This target is a glibc build and is the first Linux packaging stage: it omits automatic-update and mandatory-update configuration and creates no release completion record. Upload and release commands do not accept it.
+
+The AppImage loads third-party plugins and themes from the writable Desktop profile at `$DSH_HOME/profiles/desktop` (normally `~/.dsh/profiles/desktop`). Install or replace them through the in-app plugin manager; replacing the AppImage leaves that profile and its installed themes intact. A fresh profile starts with only the core bundles. To bake the validated community set (`@ljwei-stak/dsh-boot-animation`, `dsh-plugin-wallpaper-engine`, `dsh-video-skin`, `dsh-whale-widget`, and `dshmarket`) into one package instead, set `DSH_DESKTOP_EMBED_PLUGINS=1` for the packaging command. The Linux package uses a dedicated G × DSH icon for the AppImage and application windows.
+
+The build needs Node 24, the root `packageManager` version of pnpm, Git, tar, network access to the npm registry, nodejs.org, GitHub release assets and Python package files. The app also needs the usual Electron desktop libraries (GTK, NSS and ALSA) on the machine that runs it. Systems without FUSE can start the AppImage with `APPIMAGE_EXTRACT_AND_RUN=1`.
 
 <a id="macos-release-signing"></a>
 

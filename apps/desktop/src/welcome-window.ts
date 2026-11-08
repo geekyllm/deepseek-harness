@@ -25,6 +25,9 @@ export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopL
     show: false,
     title: locale.messages.welcomeTitle,
     backgroundColor: platform === 'darwin' || platform === 'win32' ? '#00000000' : '#FFFFFF',
+    ...(platform === 'linux' ? {
+      icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources', 'icon-linux.png'),
+    } : {}),
     ...(platform === 'darwin' ? {
       titleBarStyle: 'hidden',
       trafficLightPosition: { x: 21, y: 21 },
