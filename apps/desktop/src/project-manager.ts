@@ -24,11 +24,13 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { DESKTOP_BUNDLED_PLUGINS, DESKTOP_BUNDLED_PLUGIN_NAMES, desktopBundledPluginDependencies, desktopBundledPlugins } from './bundled-plugins.ts'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+const BUNDLED_PLUGIN_MARKER = '.desktop-bundled-plugins-v1'
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
@@ -84,7 +86,7 @@ export class DesktopProjectManager {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
-      createPluginProfile(this.paths.profile)
+      createPluginProfile(this.paths.profile, { bundledPlugins: runtimeBundledPlugins(this.runtime.dsh) })
       removeLinkProjections(this.paths.profile)
     })
   }
@@ -133,12 +135,13 @@ export class DesktopProjectManager {
 export function createRuntimeProjectMetadata(projectDir: string, release: DesktopRelease): void {
   mkdirSync(projectDir, { recursive: true, mode: 0o700 })
   const packageSet = verifyDesktopCorePackageSet(projectDir, release.version)
+  const bundledPlugins = desktopBundledPlugins()
   const manifest = {
     name: PROJECT_NAME,
     private: true,
     version: '0.0.0',
-    dependencies: desktopCorePackageOverrides(packageSet),
-    dsh: { profile: { bundles: [...WEB_PROFILE.bundles] } },
+    dependencies: { ...desktopCorePackageOverrides(packageSet), ...desktopBundledPluginDependencies() },
+    dsh: { profile: { bundles: [...WEB_PROFILE.bundles, ...bundledPlugins.map(plugin => plugin.name)] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
   writeFileSync(
@@ -169,7 +172,70 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
 }
 
-/** Create the first external plugin profile without running a package manager. */
-export function createPluginProfile(projectDir: string): void {
-  initProfile(projectDir, WEB_PROFILE.bundles)
+/**
+ * List bundled plugin names whose package directories the current runtime carries.
+ * @param runtimeDsh - Materialized dsh runtime directory.
+ * @returns Package names available for profile seeding.
+ */
+export function runtimeBundledPlugins(runtimeDsh: string): readonly string[] {
+  return DESKTOP_BUNDLED_PLUGINS
+    .filter(plugin => existsSync(join(runtimeDsh, 'node_modules', ...plugin.name.split('/'), 'package.json')))
+    .map(plugin => plugin.name)
+}
+
+/**
+ * Drop bundles seeded by an earlier embedded-plugin package when neither the profile nor its dependencies provide them.
+ * @param projectDir - Desktop profile directory.
+ */
+function pruneStaleBundledPlugins(projectDir: string): void {
+  const marker = join(projectDir, BUNDLED_PLUGIN_MARKER)
+  if (!existsSync(marker)) return
+  const manifestPath = join(projectDir, 'package.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    dependencies?: Record<string, string>
+    dsh?: { profile?: { bundles?: unknown } }
+  }
+  const bundles = manifest.dsh?.profile?.bundles
+  if (!Array.isArray(bundles) || !bundles.every(bundle => typeof bundle === 'string')) return
+  const retained = bundles.filter(name => !DESKTOP_BUNDLED_PLUGIN_NAMES.includes(name)
+    || Object.hasOwn(manifest.dependencies ?? {}, name)
+    || existsSync(join(projectDir, 'node_modules', ...name.split('/'), 'package.json')))
+  if (retained.length !== bundles.length) {
+    manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: retained } }
+    writeJson(manifestPath, manifest)
+  }
+  unlinkSync(marker)
+}
+
+/**
+ * Create the external plugin profile and append bundled plugins once to an older profile.
+ * @param projectDir - Desktop profile directory.
+ * @param options - Bundled plugin names carried by the current runtime.
+ */
+export function createPluginProfile(
+  projectDir: string,
+  options: { readonly bundledPlugins?: readonly string[] } = {},
+): void {
+  const bundledPlugins = options.bundledPlugins ?? []
+  const manifestPath = join(projectDir, 'package.json')
+  if (!existsSync(manifestPath)) {
+    initProfile(projectDir, [...WEB_PROFILE.bundles, ...bundledPlugins])
+    if (bundledPlugins.length > 0) writeFileSync(join(projectDir, BUNDLED_PLUGIN_MARKER), '1\n', { mode: 0o600 })
+    return
+  }
+  // Existing profiles retain their manifest, but a recovery flow may have removed the generated support files.
+  initProfile(projectDir, [])
+  if (bundledPlugins.length === 0) {
+    pruneStaleBundledPlugins(projectDir)
+    return
+  }
+  if (existsSync(join(projectDir, BUNDLED_PLUGIN_MARKER))) return
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    dsh?: { profile?: { bundles?: unknown } }
+  }
+  const bundles = manifest.dsh?.profile?.bundles
+  if (!Array.isArray(bundles) || !bundles.every(bundle => typeof bundle === 'string')) return
+  for (const name of bundledPlugins) if (!bundles.includes(name)) bundles.push(name)
+  writeJson(manifestPath, manifest)
+  writeFileSync(join(projectDir, BUNDLED_PLUGIN_MARKER), '1\n', { mode: 0o600 })
 }

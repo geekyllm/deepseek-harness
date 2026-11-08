@@ -48,6 +48,22 @@ describe('packaged runtime verification', () => {
     expect(await requiredRuntimeVersion('/qualification/dsh', '0.1.6-alpha.2.20260921.1')).toBe('0.1.6-alpha.2.20260921.1')
   })
 
+  it('builds an unsigned Linux AppImage without release policy or update feeds', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+      DSH_DESKTOP_TARGET_PLATFORM: 'linux',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+      DSH_DESKTOP_UNSIGNED: '1',
+    }, 'linux', 'x64')
+    expect(config).toMatchObject({
+      linux: { executableName: 'deepseek-harness', syncDesktopName: true, target: ['AppImage'] },
+      publish: null,
+      extraMetadata: { desktopName: 'deepseek-harness' },
+    })
+    expect(config).not.toHaveProperty('extraMetadata.dshMandatoryUpdatePolicy')
+  })
+
   it('does not let a build version change what the bundled runtime must declare', async () => {
     const productVersion = (JSON.parse(
       await import('node:fs/promises').then(async fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8')),

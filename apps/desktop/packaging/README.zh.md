@@ -19,6 +19,7 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 - [macOS 自托管打包](#macos-actions)
 - [未签名 Windows 测试安装包](#unsigned-windows-test-installer)
 - [无发布签名的本地 macOS DMG](#local-macos-dmg-without-release-signing)
+- [无发布签名的本地 Linux x64 AppImage](#local-linux-x64-appimage-without-release-signing)
 - [macOS 发布签名与诊断](#macos-release-signing)
 - [目录构建与准备](#directory-and-preparation)
 - [用回环 registry 安装本地 Official 包](#local-official-bundles-from-a-loopback-registry)
@@ -97,7 +98,7 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux 不是受支持的 Desktop 发布目标。
+macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux x64 支持本地未签名 AppImage 构建；Linux 尚未成为发布或更新目标。
 
 macOS 正式发布和本地未签名 DMG 都通过 [electron-builder 配置](../scripts/electron-builder-config.mjs)中的 `dmg.format: 'ULMO'` 使用 LZMA 压缩。[构建时补丁](../../../patches/app-builder-lib@26.17.0.patch)为固定版本 builder 的校验规则和 TypeScript 声明添加此格式。
 
@@ -177,6 +178,22 @@ pnpm run package:desktop:mac:x64:unsigned
 添加 `--check` 仅验证本地配置和工具而不构建，或添加 `--dir` 只生成解包应用。DMG 路径为 `apps/desktop/.desktop-build/targets/<target>/unsigned-artifacts/deepseek-harness-<version>-mac-<arch>-unsigned.dmg`。所有检查通过后，命令打印 `DMG:` 及其绝对路径。打开后将应用复制到本地测试目录。
 
 这些命令忽略 `.env.macos` 和继承的发布配置，使用 `com.deepseek.harness` 作为应用 ID，并省略自动更新和强制更新配置。构建工具、标准网络代理与 `DSH_DESKTOP_NPM_REGISTRY` 仍可从 shell 提供。它们跳过 Developer ID 签名、Apple 公证、临时签名钥匙串和公证代理修改。Electron 使用无需证书的本地 ad-hoc 签名，以便修改后的可执行文件能够运行；DMG 不签名。准备阶段和组装后的应用仍执行运行时完整性与冒烟检查。本地构建不生成更新源、ZIP 或发布完成记录，上传命令无法发布这些产物。macOS 可能要求在“系统设置 → 隐私与安全性”中批准打开未经公证的应用。这类构建不放入 Computer Use helper，Computer Use 准备时会报告 helper 缺失。
+
+<a id="local-linux-x64-appimage-without-release-signing"></a>
+
+## 无发布签名的本地 Linux x64 AppImage
+
+执行 `pnpm install` 后，在 Linux x64 主机的仓库根目录运行：
+
+```sh
+pnpm run package:desktop:linux:x64:unsigned
+```
+
+添加 `--check` 仅验证构建主机和工具而不构建。AppImage 写入 `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/`；运行时 smoke 检查通过后，命令打印其绝对路径。该目标是 glibc 构建，也是 Linux 打包的第一阶段：它省略自动更新和强制更新配置，且不生成发布完成记录。上传和发布命令不接受该产物。
+
+AppImage 从可写的 Desktop profile 加载第三方插件和主题，路径为 `$DSH_HOME/profiles/desktop`（通常为 `~/.dsh/profiles/desktop`）。通过应用内插件管理器安装或更换插件；替换 AppImage 不会删除该 profile 及其中已安装的主题。新的 profile 只启动核心组合包。如需把已验证的社区插件集（`@ljwei-stak/dsh-boot-animation`、`dsh-plugin-wallpaper-engine`、`dsh-video-skin`、`dsh-whale-widget` 和 `dshmarket`）内置到单个安装包，请在打包命令中设置 `DSH_DESKTOP_EMBED_PLUGINS=1`。Linux 安装包使用独立的 G × DSH 图标作为 AppImage 和窗口图标。
+
+构建需要 Node 24、根 `packageManager` 固定版本的 pnpm、Git、tar，以及访问 npm registry、nodejs.org、GitHub release 资源和 Python 包文件的网络。运行应用的机器还需要 Electron 常见的桌面库（GTK、NSS 和 ALSA）。没有 FUSE 的系统可用 `APPIMAGE_EXTRACT_AND_RUN=1` 启动 AppImage。
 
 <a id="macos-release-signing"></a>
 

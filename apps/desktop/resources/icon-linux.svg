@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="bg" x1="80" y1="48" x2="944" y2="976" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#0f172a"/>
+    <stop offset="0.55" stop-color="#15233f"/>
+    <stop offset="1" stop-color="#0b1220"/>
+  </linearGradient>
+  <linearGradient id="accent" x1="308" y1="260" x2="760" y2="782" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#93c5fd"/>
+    <stop offset="1" stop-color="#38bdf8"/>
+  </linearGradient>
+</defs>
+<rect x="48" y="48" width="928" height="928" rx="220" fill="url(#bg)" stroke="#2b4b76" stroke-width="12"/>
+<rect x="108" y="108" width="808" height="808" rx="172" fill="none" stroke="#60a5fa" stroke-opacity="0.22" stroke-width="5"/>
+<text x="512" y="548" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="360" font-weight="800" fill="#f8fafc" letter-spacing="-24">G</text>
+<text x="512" y="746" text-anchor="middle" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="180" font-weight="700" fill="url(#accent)" letter-spacing="-4">× DSH</text>
+</svg>
